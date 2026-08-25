@@ -354,8 +354,8 @@ class RRXORProcess:
         self.T1[3, 0] = alpha; self.T0[4, 0] = alpha
         self.T1[4, 0] = 1- alpha; self.T0[3, 0] = 1 - alpha
         self.matrices = {
-            ' A': self.T0,
-            ' B': self.T1
+            '0': self.T0,
+            '1': self.T1
             }
         self.tokens = list(self.matrices.keys())
 
@@ -395,6 +395,62 @@ class RRXORProcess:
                 if norm > 1e-9: b /= norm
                 else: b = np.ones(self.num_states) / self.num_states
             belief_states[t] = b
+            
+        return belief_states
+        
+    def generate_batch(self, batch_size, length):
+        states = np.zeros((batch_size, length), dtype=int)
+        obs_array = np.empty((batch_size, length), dtype=object)
+        current_states = np.zeros(batch_size, dtype=int)
+        if self.random_state:
+            current_states = np.random.randint(0, 5, size=batch_size)
+            
+        tokens_np = np.array(self.tokens)
+        
+        for t in range(length):
+            states[:, t] = current_states
+            
+            p0 = self.T0[current_states].sum(axis=1)
+            p1 = self.T1[current_states].sum(axis=1)
+            p0_norm = p0 / (p0 + p1)
+            
+            # Emit
+            rand_vals_E = np.random.rand(batch_size)
+            # 0 if rand < p0_norm, 1 otherwise
+            emissions = (rand_vals_E > p0_norm).astype(int) 
+            obs_array[:, t] = tokens_np[emissions]
+            
+            # Transition
+            # Argmax gives the deterministic destination state for the corresponding token
+            next_state_0 = np.argmax(self.T0[current_states], axis=1)
+            next_state_1 = np.argmax(self.T1[current_states], axis=1)
+            
+            current_states = np.where(emissions == 0, next_state_0, next_state_1)
+            
+        return states, obs_array
+
+    def optimal_batch(self, observations_batch):
+        batch_size, length = observations_batch.shape
+        belief_states = np.zeros((batch_size, length, self.num_states))
+        b = np.full((batch_size, self.num_states), 1.0 / self.num_states)
+        
+        for t in range(length):
+            tokens_t = observations_batch[:, t]
+            b_new = np.zeros_like(b)
+            for token in self.tokens:
+                mask = (tokens_t == token)
+                if np.any(mask):
+                    b_new[mask] = np.dot(b[mask], self.matrices[token])
+            
+            b = b_new
+            norm = np.sum(b, axis=1, keepdims=True)
+            zero_mask = (norm == 0).squeeze(-1)
+            if np.any(zero_mask):
+                b[zero_mask] = 1.0 / self.num_states
+                norm[zero_mask] = 1.0
+            
+            b /= norm
+            belief_states[:, t, :] = b
             
         return belief_states
     
