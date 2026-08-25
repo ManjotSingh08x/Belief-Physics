@@ -23,11 +23,11 @@ DEFAULT_DEVICE = "cpu"
 
 # n: Number of physical simulation steps (Euler integration steps) between two HMM state transitions.
 # An impulse is injected exactly once every 'n' steps.
-DEFAULT_N = 25
+DEFAULT_N = 10
 
 # m: Total number of HMM state transitions (and thus impulses generated) in a single simulation run.
 # The total number of simulation steps will be m * n.
-DEFAULT_M = 50
+DEFAULT_M = 5000
 
 # t: Duration of a single physical simulation step in milliseconds.
 # In the code, this is converted to seconds for physics integration (dt = t / 1000.0).
@@ -49,7 +49,7 @@ PLOT_INITIAL_THETA = 0
 PLOT_DELTA_V = 0.1
 
 # plot_markers: Whether to visually mark the applied impulses on the output plot
-PLOT_MARKERS = True
+PLOT_MARKERS = False
 
 
 # HMM Parameters for Plotting (Specifically for Mess3Process)
