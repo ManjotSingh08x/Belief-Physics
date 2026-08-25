@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-import params
+from physics import params
 
 
 class PendulumSimulator:
@@ -67,6 +67,9 @@ class PendulumSimulator:
         # Prepare HMM Sequences if provided
         if self.hmm is not None:
             if hasattr(self.hmm, 'generate_batch'):
+                if getattr(self, '_parallel_print_flag', True):
+                    print("🚀 [Physics Engine] Using ultra-fast C++/NumPy Parallel HMM Vectorization!")
+                    self._parallel_print_flag = False
                 hmm_states_np, all_obs = self.hmm.generate_batch(num_simulations, self.m)
                 hmm_beliefs_np = self.hmm.optimal_batch(all_obs)
                 

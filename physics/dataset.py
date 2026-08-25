@@ -1,8 +1,8 @@
 import torch
 from torch.utils.data import IterableDataset
-import params
-from hmm import Mess3Process
-from simulator import PendulumSimulator
+from physics import params
+from physics.hmm import Mess3Process
+from physics.simulator import PendulumSimulator
 
 class PendulumIterableDataset(IterableDataset):
     def __init__(self, n=None, m=None, t=None, 
