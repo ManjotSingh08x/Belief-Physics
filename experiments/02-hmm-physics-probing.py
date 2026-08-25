@@ -123,7 +123,7 @@ def probe_belief_state(acts, beliefs):
 def main():
     print(f"Initializing PendulumIterableDataset (Batch Size: {BATCH_SIZE})...")
     dataset = PendulumIterableDataset()
-    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE)
+    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, num_workers=2)
     
     model = ContinuousTransformer(
         input_dim=2, 
