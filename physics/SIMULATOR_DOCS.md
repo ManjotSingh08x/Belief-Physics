@@ -1,0 +1,107 @@
+# Pendulum Simulator Documentation
+
+This document serves as a complete guide on how to use the `simulator.py`, `hmm.py`, and visualization scripts. It details the purpose, arguments, and outputs of every key component in the simulation pipeline.
+
+## 1. How to Use the Simulator
+
+The core simulation logic is completely contained within the `PendulumSimulator` class in `simulator.py`. You can use it as a standalone physics engine, or hook it up to a Hidden Markov Model (HMM) to simulate driven chaos.
+
+### Example Usage
+```python
+from physics.simulator import PendulumSimulator
+from physics.hmm import Mess3Process
+from physics import params
+
+# 1. (Optional) Initialize the HMM
+hmm = Mess3Process(alpha=0.7, x=0.15)
+
+# 2. Initialize the Simulator
+sim = PendulumSimulator(
+    n=10,            # steps between impulses
+    m=5000,          # number of impulses per simulation
+    t=20,            # time step duration in ms
+    hmm=hmm,         # the HMM instance (None for free oscillation)
+    mu=0.1,          # damping coefficient
+    g=9.8,           # gravity
+    l=1.0,           # pendulum length
+    delta_v=0.5      # impulse magnitude
+)
+
+# 3. Run the Simulation (Vectorized over 64 parallel pendulums)
+results = sim.simulate_pendulum(
+    num_simulations=64, 
+    initial_velocity=0.5, 
+    initial_theta=0.0
+)
+
+print(results["velocity"].shape) # Output: torch.Size([64, 50000])
+```
+
+---
+
+## 2. Component Reference
+
+### `PendulumSimulator` (in `simulator.py`)
+**Purpose:** Handles the vector-based Semi-Implicit Euler physics integration of the pendulum, injecting $\Delta v$ impulses according to the HMM state.
+
+#### `__init__(self, n, m, t, hmm=None, mu, g, l, delta_v)`
+- **`n` (int):** Number of physics Euler steps between HMM state transitions.
+- **`m` (int):** Number of total HMM state transitions per simulation. Total physics steps = $m \times n$.
+- **`t` (float):** Duration of a single physics step in milliseconds. (converted to `dt = t / 1000` seconds).
+- **`hmm` (Object, optional):** The HMM process (e.g. `Mess3Process`). If `None`, the pendulum undergoes free damped oscillation.
+- **`mu` (float):** Linear damping coefficient ($- \mu v$).
+- **`g` (float):** Gravitational constant.
+- **`l` (float):** Length of the pendulum.
+- **`delta_v` (float):** The base velocity impulse applied. Token '0' gives `-delta_v`, '2' gives `+delta_v`, '1' gives `0`.
+
+#### `simulate_pendulum(self, num_simulations, initial_velocity=0.0, initial_theta=0.0)`
+**Purpose:** The core vectorized execution loop.
+- **Args:**
+  - `num_simulations` (int): The batch size of parallel pendulums to compute.
+  - `initial_velocity` (float/tensor): The starting velocity $v$ at $t=0$.
+  - `initial_theta` (float/tensor): The starting angle $\theta$ at $t=0$.
+- **Outputs (Dict of Tensors):**
+  - `step_type`: (batch, m*n) - `1` if an impulse was injected on this step, `0` otherwise.
+  - `theta`: (batch, m*n) - The angular displacement.
+  - `x`: (batch, m*n) - The cartesian X coordinate.
+  - `y`: (batch, m*n) - The cartesian Y coordinate.
+  - `velocity`: (batch, m*n) - The angular velocity.
+  - `hmm_state`: (batch, m*n) - The underlying true HMM state. `None` if `hmm=None`.
+  - `belief_state`: (batch, m*n, 3) - The optimal belief state simplex. `None` if `hmm=None`.
+  - `impulse_value`: (batch, m*n) - The actual $\Delta v$ magnitude injected.
+
+#### `theta_to_xy(theta, length)` (Static Method)
+**Purpose:** Helper function to mathematically convert polar coordinates to cartesian.
+- **Args:** `theta` (float or PyTorch Tensor), `length` (float).
+- **Outputs:** `(x, y)` - The cartesian coordinates.
+
+---
+
+### `Mess3Process` (in `hmm.py`)
+**Purpose:** A 3-state (Triangle topology) Hidden Markov Model generator.
+- **`alpha`:** Probability of emitting the dominant token for the current state.
+- **`x`:** Probability of transitioning to a specific neighboring state.
+
+#### `generate_batch(self, batch_size, length)`
+- **Args:** `batch_size` (number of sequences), `length` (number of tokens per sequence).
+- **Outputs:** `(states, observations)`
+  - `states`: NumPy array of shape `(batch_size, length)` containing true states.
+  - `observations`: NumPy array of shape `(batch_size, length)` containing emitted string tokens (e.g., `'A'`).
+
+#### `optimal_batch(self, observations_batch)`
+- **Args:** `observations_batch` (NumPy array of tokens).
+- **Outputs:** `belief_states` (NumPy array of shape `(batch_size, length, num_states)`) tracking the forward probabilities.
+
+---
+
+## 3. Visualization Scripts
+
+### `plot_simulator.py`
+**Purpose:** Compares the velocity map of a free-swinging pendulum vs. an HMM-driven pendulum over time.
+- **How to use:** Simply run `python3 plot_simulator.py`. It pulls configuration directly from `params.py`.
+- **Output:** `velocity_map.png`.
+
+### `plot_phase_space.py`
+**Purpose:** Plots the pendulum's Angle ($\theta$) against its Velocity ($v$) to visualize the chaotic strange attractor generated by the discrete integration map.
+- **How to use:** `python3 plot_phase_space.py`.
+- **Output:** `phase_space.png`.
