@@ -13,7 +13,7 @@ DEFAULT_INITIAL_V = 1
 
 # delta_v: The base magnitude of the velocity impulse applied by the HMM. 
 # An HMM token of '0' applies -delta_v, '2' applies +delta_v, and '1' applies 0.
-DEFAULT_DELTA_V = 0.5
+DEFAULT_DELTA_V = 0.3
 
 # device: PyTorch device to run the tensor operations on (e.g., 'cpu' or 'cuda').
 DEFAULT_DEVICE = "cpu"
