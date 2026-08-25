@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from physics import params
+import params
 
 
 class PendulumSimulator:
@@ -103,9 +103,9 @@ class PendulumSimulator:
                 obs_indices = torch.tensor(obs_indices, dtype=torch.long, device=device)
             
             dv_tensor = torch.zeros_like(obs_indices, dtype=torch.float32, device=device)
-            dv_tensor[obs_indices == 0] = -self.delta_v
-            dv_tensor[obs_indices == 1] = 0.0
-            dv_tensor[obs_indices == 2] = self.delta_v
+            dv_tensor[obs_indices == 0] = self.delta_v
+            dv_tensor[obs_indices == 1] = 2.0 * self.delta_v
+            dv_tensor[obs_indices == 2] = 3.0 * self.delta_v
         else:
             hmm_states = None
             hmm_beliefs = None
