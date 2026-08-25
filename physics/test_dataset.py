@@ -6,11 +6,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from physics.dataset import PendulumIterableDataset
 import matplotlib.pyplot as plt
+import argparse
 from physics import params
 
 def main():
-    print("Initializing Pendulum Iterable Dataset...")
-    dataset = PendulumIterableDataset()
+    parser = argparse.ArgumentParser(description="Test Pendulum Dataset")
+    parser.add_argument("--hmm_type", type=str, default="mess3", choices=["mess3", "rrxor"], help="HMM type to test")
+    args = parser.parse_args()
+    
+    print(f"Initializing Pendulum Iterable Dataset (HMM: {args.hmm_type})...")
+    dataset = PendulumIterableDataset(hmm_type=args.hmm_type)
     
     # Set batch_size=8 here to test the DataLoader pulling from the IterableDataset
     dataloader = DataLoader(dataset, batch_size=8)
@@ -37,7 +42,7 @@ def main():
     # Also plot the pivot point of the pendulum
     plt.scatter([0], [0], color='red', marker='P', s=200, label='Pivot Origin (0,0)')
     
-    plt.title(f"Pendulum XY Trajectory\n(1 sequence from Dataset)")
+    plt.title(f"Pendulum XY Trajectory ({args.hmm_type.upper()})\n(1 sequence from Dataset)")
     plt.xlabel("X Position (m)")
     plt.ylabel("Y Position (m)")
     plt.grid(True)
@@ -55,7 +60,7 @@ def main():
     plt.figure(figsize=(10, 6))
     plt.hist(velocity_trajectory, bins=100, color='skyblue', edgecolor='black', alpha=0.7)
     
-    plt.title("Pendulum Velocity Histogram\n(1 sequence from Dataset)")
+    plt.title(f"Pendulum Velocity Histogram ({args.hmm_type.upper()})\n(1 sequence from Dataset)")
     plt.xlabel("Velocity (rad/s)")
     plt.ylabel("Frequency")
     plt.grid(axis='y', alpha=0.75)
@@ -80,7 +85,7 @@ def main():
     # Plot histogram across the full 1801 Vocabulary Size
     plt.hist(theta_bins, bins=1801, range=(0, 1800), color='purple', alpha=0.7)
     
-    plt.title("Vocabulary Utilization (Token Bins 0 to 1800)\\nNotice how many of the 1801 tokens are completely unused!")
+    plt.title(f"Vocabulary Utilization ({args.hmm_type.upper()}) (Token Bins 0 to 1800)\nNotice how many of the 1801 tokens are completely unused!")
     plt.xlabel("Token ID (Bin)")
     plt.ylabel("Frequency")
     plt.grid(axis='y', alpha=0.75)

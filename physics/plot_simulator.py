@@ -3,12 +3,17 @@ from simulator import PendulumSimulator
 import params
 import sys
 import os
+import argparse
 
 # Ensure hmm.py can be imported
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from hmm import Mess3Process
+from hmm import Mess3Process, RRXORProcess
 
 def main():
+    parser = argparse.ArgumentParser(description="Plot Pendulum Simulator")
+    parser.add_argument("--hmm_type", type=str, default="mess3", choices=["mess3", "rrxor"], help="HMM type to test")
+    args = parser.parse_args()
+    
     # Parameters
     n = params.DEFAULT_N    # steps between HMM transitions
     m = params.DEFAULT_M    # number of HMM transitions
@@ -20,9 +25,13 @@ def main():
     res_no_hmm = sim_no_hmm.simulate_pendulum(num_simulations, initial_velocity=params.PLOT_INITIAL_VELOCITY, initial_theta=params.PLOT_INITIAL_THETA)
     vel_no_hmm = res_no_hmm["velocity"][0].numpy()
 
-    # 2. With HMM (Mess3Process)
-    # The user mentioned Z1R, but only Mess3 and Mess5 are in hmm.py, so we use Mess3 as representative
-    hmm_process = Mess3Process(alpha=params.DEFAULT_HMM_ALPHA, x=params.DEFAULT_HMM_X)
+    # 2. With HMM
+    if args.hmm_type == 'mess3':
+        hmm_process = Mess3Process(alpha=params.DEFAULT_HMM_ALPHA, x=params.DEFAULT_HMM_X)
+    elif args.hmm_type == 'rrxor':
+        rrxor_alpha = getattr(params, 'DEFAULT_RRXOR_ALPHA', 1.0)
+        hmm_process = RRXORProcess(alpha=rrxor_alpha)
+        
     sim_with_hmm = PendulumSimulator(n=n, m=m, t=t, hmm=hmm_process, mu=params.PLOT_MU, g=params.PLOT_G, l=params.PLOT_L, delta_v=params.PLOT_DELTA_V)
     res_with_hmm = sim_with_hmm.simulate_pendulum(num_simulations, initial_velocity=params.PLOT_INITIAL_VELOCITY, initial_theta=params.PLOT_INITIAL_THETA)
     vel_with_hmm = res_with_hmm["velocity"][0].numpy()
@@ -38,7 +47,7 @@ def main():
 
     plt.figure(figsize=(12, 6))
     plt.plot(time, vel_no_hmm, label="No HMM (Free oscillation with damping)", color='blue', alpha=0.7)
-    plt.plot(time, vel_with_hmm, label="With HMM (Mess3)", color='red', alpha=0.7)
+    plt.plot(time, vel_with_hmm, label=f"With HMM ({args.hmm_type.upper()})", color='red', alpha=0.7)
     
     # Mark impulses
     if params.PLOT_MARKERS:
@@ -57,7 +66,7 @@ def main():
         plt.scatter([time[i] for i in zero_idx], [vel_with_hmm[i] for i in zero_idx], 
                     color='black', zorder=5, label="No Change (0 Impulse)", marker='x', s=100)
 
-    plt.title("Pendulum Velocity Map: No HMM vs HMM")
+    plt.title(f"Pendulum Velocity Map: No HMM vs HMM ({args.hmm_type.upper()})")
     plt.xlabel("Time (s)")
     plt.ylabel("Velocity (rad/s)")
     plt.legend()
