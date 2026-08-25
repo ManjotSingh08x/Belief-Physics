@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import params
+import hmm
 
 
 class PendulumSimulator:
@@ -103,9 +104,17 @@ class PendulumSimulator:
                 obs_indices = torch.tensor(obs_indices, dtype=torch.long, device=device)
             
             dv_tensor = torch.zeros_like(obs_indices, dtype=torch.float32, device=device)
-            dv_tensor[obs_indices == 0] = self.delta_v
-            dv_tensor[obs_indices == 1] = 2.0 * self.delta_v
-            dv_tensor[obs_indices == 2] = 3.0 * self.delta_v
+            
+            # Map tokens to delta_v impulses based on the HMM type
+            if isinstance(self.hmm, hmm.RRXORProcess):
+                # RRXOR Process: '1' -> +dv, '0' -> -dv
+                dv_tensor[obs_indices == 1] = self.delta_v
+                dv_tensor[obs_indices == 0] = -self.delta_v
+            else:
+                # Default Mess3 Process
+                dv_tensor[obs_indices == 0] = self.delta_v
+                dv_tensor[obs_indices == 1] = 2.0 * self.delta_v
+                dv_tensor[obs_indices == 2] = 3.0 * self.delta_v
         else:
             hmm_states = None
             hmm_beliefs = None
