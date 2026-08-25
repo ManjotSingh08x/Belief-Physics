@@ -1,9 +1,12 @@
 import torch
 from torch.utils.data import DataLoader
-from dataset import PendulumIterableDataset
-import matplotlib.pyplot as plt
 import os
-import params
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from physics.dataset import PendulumIterableDataset
+import matplotlib.pyplot as plt
+from physics import params
 
 def main():
     print("Initializing Pendulum Iterable Dataset...")
@@ -59,7 +62,37 @@ def main():
     
     hist_save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "velocity_histogram_test.png")
     plt.savefig(hist_save_path, dpi=300)
-    print(f"Velocity histogram saved to: {hist_save_path}\n")
+    print(f"Velocity histogram saved to: {hist_save_path}")
+    
+    # --- Theta (Token Bin) Histogram Visualization ---
+    print("\nGenerating Theta (Token Bin) histogram to visualize exact vocabulary utilization...")
+    
+    # We take the theta trajectory from ALL sequences in the batch to get a good distribution
+    theta_trajectory = batch["theta"].numpy().flatten()
+    import numpy as np
+    theta_deg = theta_trajectory * (180.0 / np.pi)
+    
+    # Calculate the exact Token Bins used by the model
+    theta_bins = np.clip(np.round(theta_deg * 10.0), -900, 900) + 900
+    
+    plt.figure(figsize=(10, 6))
+    
+    # Plot histogram across the full 1801 Vocabulary Size
+    plt.hist(theta_bins, bins=1801, range=(0, 1800), color='purple', alpha=0.7)
+    
+    plt.title("Vocabulary Utilization (Token Bins 0 to 1800)\\nNotice how many of the 1801 tokens are completely unused!")
+    plt.xlabel("Token ID (Bin)")
+    plt.ylabel("Frequency")
+    plt.grid(axis='y', alpha=0.75)
+    
+    # Zoom in slightly to the active region for better visibility if it's super narrow
+    active_min = max(0, np.min(theta_bins) - 50)
+    active_max = min(1800, np.max(theta_bins) + 50)
+    plt.xlim(active_min, active_max)
+    
+    theta_hist_save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "theta_histogram_test.png")
+    plt.savefig(theta_hist_save_path, dpi=300)
+    print(f"Token Bin histogram saved to: {theta_hist_save_path}\n")
 
 if __name__ == "__main__":
     main()
