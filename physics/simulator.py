@@ -25,6 +25,21 @@ class PendulumSimulator:
         self.l = l
         self.delta_v = delta_v
 
+    @staticmethod
+    def theta_to_xy(theta, length):
+        """
+        Converts polar angle theta to cartesian x, y coordinates.
+        Supports both PyTorch tensors and Python floats.
+        """
+        if isinstance(theta, torch.Tensor):
+            x = length * torch.sin(theta)
+            y = -length * torch.cos(theta)
+        else:
+            import math
+            x = length * math.sin(theta)
+            y = -length * math.cos(theta)
+        return x, y
+
     def simulate_pendulum(self, num_simulations, initial_velocity=0.0, initial_theta=0.0):
         """
         Runs the simulation in a vectorized batch.
@@ -51,27 +66,38 @@ class PendulumSimulator:
         
         # Prepare HMM Sequences if provided
         if self.hmm is not None:
-            all_states = []
-            all_obs = []
-            all_beliefs = []
-            for _ in range(num_simulations):
-                s, o = self.hmm.generate_sequence(self.m)
-                b = self.hmm.optimal(o)
-                all_states.append(s)
-                all_obs.append(o)
-                all_beliefs.append(b)
+            if hasattr(self.hmm, 'generate_batch'):
+                hmm_states_np, all_obs = self.hmm.generate_batch(num_simulations, self.m)
+                hmm_beliefs_np = self.hmm.optimal_batch(all_obs)
                 
-            hmm_states = torch.tensor(np.array(all_states), dtype=torch.long, device=device)
-            hmm_beliefs = torch.tensor(np.array(all_beliefs), dtype=torch.float32, device=device)
-            
-            # Map HMM tokens to delta_v impulses.
-            # Assuming 3 distinct classes, e.g., '0'->-delta_v, '1'->0, '2'->+delta_v
-            # or 'A'->-delta_v, 'B'->0, 'C'->+delta_v. We'll sort the tokens to map them.
-            tokens = sorted(self.hmm.tokens)
-            obs_indices = []
-            for obs in all_obs:
-                obs_indices.append([tokens.index(tok) for tok in obs])
-            obs_indices = torch.tensor(obs_indices, dtype=torch.long, device=device)
+                hmm_states = torch.tensor(hmm_states_np, dtype=torch.long, device=device)
+                hmm_beliefs = torch.tensor(hmm_beliefs_np, dtype=torch.float32, device=device)
+                
+                tokens = sorted(self.hmm.tokens)
+                obs_indices_np = np.zeros_like(all_obs, dtype=int)
+                for i, tok in enumerate(tokens):
+                    obs_indices_np[all_obs == tok] = i
+                obs_indices = torch.tensor(obs_indices_np, dtype=torch.long, device=device)
+            else:
+                all_states = []
+                all_obs = []
+                all_beliefs = []
+                for _ in range(num_simulations):
+                    s, o = self.hmm.generate_sequence(self.m)
+                    b = self.hmm.optimal(o)
+                    all_states.append(s)
+                    all_obs.append(o)
+                    all_beliefs.append(b)
+                    
+                hmm_states = torch.tensor(np.array(all_states), dtype=torch.long, device=device)
+                hmm_beliefs = torch.tensor(np.array(all_beliefs), dtype=torch.float32, device=device)
+                
+                # Map HMM tokens to delta_v impulses.
+                tokens = sorted(self.hmm.tokens)
+                obs_indices = []
+                for obs in all_obs:
+                    obs_indices.append([tokens.index(tok) for tok in obs])
+                obs_indices = torch.tensor(obs_indices, dtype=torch.long, device=device)
             
             dv_tensor = torch.zeros_like(obs_indices, dtype=torch.float32, device=device)
             dv_tensor[obs_indices == 0] = -self.delta_v
@@ -118,8 +144,7 @@ class PendulumSimulator:
             theta = theta + v * dt
             
             # Calculate coordinates
-            x = self.l * torch.sin(theta)
-            y = -self.l * torch.cos(theta)
+            x, y = self.theta_to_xy(theta, self.l)
             
             # Record Data
             out_theta[:, step] = theta
