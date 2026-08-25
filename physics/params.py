@@ -62,6 +62,12 @@ DEFAULT_HMM_ALPHA = 0.7
 # In Mess3Process (a triangle), there are 2 neighbors, so the chance to stay in the current state is (1 - 2*x).
 DEFAULT_HMM_X = 0.15
 
+# Default HMM Type ('mess3' or 'rrxor')
+DEFAULT_HMM_TYPE = 'mess3'
+
+# RRXOR Specific Parameters
+DEFAULT_RRXOR_ALPHA = 1.0
+
 
 # Dataset Generation Parameters
 DATASET_BATCH_SIZE = 64
