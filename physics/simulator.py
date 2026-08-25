@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from physics import param
+from physics import params
 
 
 class PendulumSimulator:
