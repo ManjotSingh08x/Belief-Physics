@@ -23,7 +23,7 @@ DEFAULT_DEVICE = "cpu"
 
 # n: Number of physical simulation steps (Euler integration steps) between two HMM state transitions.
 # An impulse is injected exactly once every 'n' steps.
-DEFAULT_N = 10
+DEFAULT_N = 25
 
 # m: Total number of HMM state transitions (and thus impulses generated) in a single simulation run.
 # The total number of simulation steps will be m * n.
