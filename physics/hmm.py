@@ -84,6 +84,57 @@ class Mess3Process:
                 else: b = np.ones(3)/3
             belief_states[t] = b
             
+            
+        return belief_states
+    
+    def generate_batch(self, batch_size, length):
+        states = np.zeros((batch_size, length), dtype=int)
+        obs_array = np.empty((batch_size, length), dtype=object)
+        current_states = np.random.choice(self.num_states, size=batch_size)
+        
+        E_cdf = np.cumsum(self.E, axis=1)
+        T_cdf = np.cumsum(self.T_base, axis=1)
+        tokens_np = np.array(self.tokens)
+        
+        for t in range(length):
+            states[:, t] = current_states
+            
+            # Emit
+            rand_vals_E = np.random.rand(batch_size, 1)
+            current_E_cdf = E_cdf[current_states]
+            emissions = (rand_vals_E > current_E_cdf).sum(axis=1)
+            obs_array[:, t] = tokens_np[emissions]
+            
+            # Transition
+            rand_vals_T = np.random.rand(batch_size, 1)
+            current_T_cdf = T_cdf[current_states]
+            current_states = (rand_vals_T > current_T_cdf).sum(axis=1)
+            
+        return states, obs_array
+
+    def optimal_batch(self, observations_batch):
+        batch_size, length = observations_batch.shape
+        belief_states = np.zeros((batch_size, length, self.num_states))
+        b = np.full((batch_size, self.num_states), 1.0 / self.num_states)
+        
+        for t in range(length):
+            tokens_t = observations_batch[:, t]
+            b_new = np.zeros_like(b)
+            for token in self.tokens:
+                mask = (tokens_t == token)
+                if np.any(mask):
+                    b_new[mask] = np.dot(b[mask], self.matrices[token])
+            
+            b = b_new
+            norm = np.sum(b, axis=1, keepdims=True)
+            zero_mask = (norm == 0).squeeze(-1)
+            if np.any(zero_mask):
+                b[zero_mask] = 1.0 / self.num_states
+                norm[zero_mask] = 1.0
+            
+            b /= norm
+            belief_states[:, t, :] = b
+            
         return belief_states
     
     def plot_simplex(self, observations, hidden_states=None, show_triangle=True, title="Mess3 Optimal Belief Simplex"):
