@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import IterableDataset
 from physics import params
-from physics.hmm import Mess3Process
+from physics.hmm import Mess3Process, RRXORProcess
 from physics.simulator import PendulumSimulator
 
 class PendulumIterableDataset(IterableDataset):
@@ -10,6 +10,7 @@ class PendulumIterableDataset(IterableDataset):
                  mu=None, g=None, l=None, 
                  initial_velocity = None,
                  delta_v=None,
+                 hmm_type=None,
                  alpha=None, x=None):
         super().__init__()
         
@@ -28,7 +29,15 @@ class PendulumIterableDataset(IterableDataset):
         self.alpha = alpha if alpha is not None else params.DEFAULT_HMM_ALPHA
         self.x = x if x is not None else params.DEFAULT_HMM_X
         
-        self.hmm = Mess3Process(alpha=self.alpha, x=self.x)
+        self.hmm_type = hmm_type if hmm_type is not None else getattr(params, 'DEFAULT_HMM_TYPE', 'mess3')
+        
+        if self.hmm_type == 'mess3':
+            self.hmm = Mess3Process(alpha=self.alpha, x=self.x)
+        elif self.hmm_type == 'rrxor':
+            rrxor_alpha = getattr(params, 'DEFAULT_RRXOR_ALPHA', 1.0)
+            self.hmm = RRXORProcess(alpha=rrxor_alpha)
+        else:
+            raise ValueError(f"Unknown HMM type: {self.hmm_type}")
         self.simulator = PendulumSimulator(
             n=self.n, m=self.m, t=self.t, hmm=self.hmm, 
             mu=self.mu, g=self.g, l=self.l, delta_v=self.delta_v
