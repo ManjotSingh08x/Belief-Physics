@@ -66,7 +66,7 @@ DEFAULT_HMM_X = 0.15
 DEFAULT_HMM_TYPE = 'mess3'
 
 # RRXOR Specific Parameters
-DEFAULT_RRXOR_ALPHA = 1.0
+DEFAULT_RRXOR_ALPHA = 0.7
 
 
 # Dataset Generation Parameters
