@@ -1,7 +1,7 @@
 # Default Pendulum Physics Parameters
 
 # mu: Coefficient for linear viscous damping (-mu * v). Controls how fast the pendulum loses energy.
-DEFAULT_MU = 0.1
+DEFAULT_MU = 0.5
 
 # g: Acceleration due to gravity (determines the restoring force along with L).
 DEFAULT_G = 9.8
@@ -13,7 +13,7 @@ DEFAULT_INITIAL_V = 1
 
 # delta_v: The base magnitude of the velocity impulse applied by the HMM. 
 # An HMM token of '0' applies -delta_v, '2' applies +delta_v, and '1' applies 0.
-DEFAULT_DELTA_V = 0.05
+DEFAULT_DELTA_V = 0.5
 
 # device: PyTorch device to run the tensor operations on (e.g., 'cpu' or 'cuda').
 DEFAULT_DEVICE = "cpu"
@@ -46,10 +46,10 @@ PLOT_INITIAL_VELOCITY = 1
 # initial_theta: The starting angular displacement (theta) of the pendulum bob at t=0.
 PLOT_INITIAL_THETA = 0
 
-PLOT_DELTA_V = 0.05
+PLOT_DELTA_V = 0.1
 
 # plot_markers: Whether to visually mark the applied impulses on the output plot
-PLOT_MARKERS = False
+PLOT_MARKERS = True
 
 
 # HMM Parameters for Plotting (Specifically for Mess3Process)
