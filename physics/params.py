@@ -27,7 +27,7 @@ DEFAULT_N = 10
 
 # m: Total number of HMM state transitions (and thus impulses generated) in a single simulation run.
 # The total number of simulation steps will be m * n.
-DEFAULT_M = 5000
+DEFAULT_M = 10
 
 # t: Duration of a single physical simulation step in milliseconds.
 # In the code, this is converted to seconds for physics integration (dt = t / 1000.0).
