@@ -70,4 +70,4 @@ DEFAULT_RRXOR_ALPHA = 0.7
 
 
 # Dataset Generation Parameters
-DATASET_BATCH_SIZE = 64
+DATASET_BATCH_SIZE = 4096
