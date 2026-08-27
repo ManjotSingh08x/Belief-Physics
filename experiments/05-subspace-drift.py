@@ -22,7 +22,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SEQ_LEN = 250
 BATCH_SIZE = 256
-VOCAB_SIZE = 1801
+VOCAB_SIZE = params.VOCAB_SIZE
 EMBED_DIM = 128
 NUM_LAYERS = 4
 NUM_HEADS = 1
@@ -49,9 +49,7 @@ MODEL_PATH = "experiments/outputs-03/hmm_discrete_model.pt"
 
 
 def theta_to_bins(theta_rad):
-    theta_deg = theta_rad * (180.0 / np.pi)
-    bins = torch.round(theta_deg * THETA_SCALE) + THETA_OFFSET
-    return torch.clamp(bins, 0, VOCAB_SIZE - 1).long()
+    return params.discretize_theta(theta_rad)
 
 
 def to_barycentric(belief_3d):

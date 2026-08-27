@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import random
 
 # Default Pendulum Physics Parameters
 
@@ -12,7 +13,7 @@ DEFAULT_G = 9.8
 # l: Length of the pendulum (affects the period of oscillation).
 DEFAULT_L = 1
 
-DEFAULT_INITIAL_V = 1 
+DEFAULT_INITIAL_V = 1
 
 # delta_v: The base magnitude of the velocity impulse applied by the HMM. 
 # An HMM token of '0' applies -delta_v, '2' applies +delta_v, and '1' applies 0.
@@ -30,7 +31,7 @@ DEFAULT_N = 10
 
 # m: Total number of HMM state transitions (and thus impulses generated) in a single simulation run.
 # The total number of simulation steps will be m * n.
-DEFAULT_M = 50
+DEFAULT_M = 40
 
 # t: Duration of a single physical simulation step in milliseconds.
 # In the code, this is converted to seconds for physics integration (dt = t / 1000.0).
@@ -39,22 +40,10 @@ DEFAULT_T = 20
 # num_simulations: The batch size, or number of pendulums to simulate in parallel.
 PLOT_NUM_SIMULATIONS = 1
 
-PLOT_MU = 0.1
-PLOT_G = 9.8
-PLOT_L = 1.0
-
-# initial_velocity: The starting angular velocity (v) of the pendulum bob at t=0.
-PLOT_INITIAL_VELOCITY = 1
-
-# initial_theta: The starting angular displacement (theta) of the pendulum bob at t=0.
-PLOT_INITIAL_THETA = 0
-
-PLOT_DELTA_V = 0.1
-
 # plot_markers: Whether to visually mark the applied impulses on the output plot
-PLOT_MARKERS = False
+PLOT_MARKERS = True
 
-
+DEFAULT_INITIAL_THETA  = 0
 # HMM Parameters for Plotting (Specifically for Mess3Process)
 
 # alpha: The probability of the HMM emitting its "dominant" or primary token for its current state.

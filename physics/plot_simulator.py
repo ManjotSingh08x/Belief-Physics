@@ -21,8 +21,8 @@ def main():
     num_simulations = params.PLOT_NUM_SIMULATIONS
 
     # 1. No HMM
-    sim_no_hmm = PendulumSimulator(n=n, m=m, t=t, hmm=None, mu=params.PLOT_MU, g=params.PLOT_G, l=params.PLOT_L)
-    res_no_hmm = sim_no_hmm.simulate_pendulum(num_simulations, initial_velocity=params.PLOT_INITIAL_VELOCITY, initial_theta=params.PLOT_INITIAL_THETA)
+    sim_no_hmm = PendulumSimulator(n=n, m=m, t=t, hmm=None, mu=params.DEFAULT_MU, g=params.DEFAULT_G, l=params.DEFAULT_L)
+    res_no_hmm = sim_no_hmm.simulate_pendulum(num_simulations, initial_velocity=params.DEFAULT_INITIAL_V, initial_theta=params.DEFAULT_INITIAL_THETA)
     vel_no_hmm = res_no_hmm["velocity"][0].numpy()
 
     # 2. With HMM
@@ -32,8 +32,8 @@ def main():
         rrxor_alpha = getattr(params, 'DEFAULT_RRXOR_ALPHA', 1.0)
         hmm_process = RRXORProcess(alpha=rrxor_alpha)
         
-    sim_with_hmm = PendulumSimulator(n=n, m=m, t=t, hmm=hmm_process, mu=params.PLOT_MU, g=params.PLOT_G, l=params.PLOT_L, delta_v=params.PLOT_DELTA_V)
-    res_with_hmm = sim_with_hmm.simulate_pendulum(num_simulations, initial_velocity=params.PLOT_INITIAL_VELOCITY, initial_theta=params.PLOT_INITIAL_THETA)
+    sim_with_hmm = PendulumSimulator(n=n, m=m, t=t, hmm=hmm_process, mu=params.DEFAULT_MU, g=params.DEFAULT_G, l=params.DEFAULT_L, delta_v=params.DEFAULT_DELTA_V)
+    res_with_hmm = sim_with_hmm.simulate_pendulum(num_simulations, initial_velocity=params.DEFAULT_INITIAL_V, initial_theta=params.DEFAULT_INITIAL_THETA)
     vel_with_hmm = res_with_hmm["velocity"][0].numpy()
     
     # Extract impulse steps
