@@ -57,8 +57,8 @@ NUM_HEADS = 1
 MAX_SEQ_LEN = 1024
 OUTPUT_DIR = "experiments/outputs-03"
 
-K = params.DEFAULT_N
-N = params.DEFAULT_N 
+K = params.DEFAULT_N + 1
+N = params.DEFAULT_N
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
