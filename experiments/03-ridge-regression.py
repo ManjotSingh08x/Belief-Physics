@@ -50,7 +50,7 @@ BATCH_SIZE = 256
 EPOCHS = 30
 LR = 1e-3
 
-VOCAB_SIZE = 1801 # Bins from -90.0 to +90.0 degrees with 0.1 degree resolution
+VOCAB_SIZE = params.VOCAB_SIZE
 EMBED_DIM = 128
 NUM_LAYERS = 4
 NUM_HEADS = 1
@@ -141,10 +141,9 @@ def main():
             for _ in range(train_yields):
                 batch = next(data_iter)
                 
-                # Discretize theta to bins (0.1 degree resolution)
+                # Discretize theta to bins
                 theta = batch["theta"]
-                theta_deg = theta * (180.0 / np.pi)
-                theta_bins = torch.clamp(torch.round(theta_deg), -90, 90).long() + 90
+                theta_bins = params.discretize_theta(theta)
                 theta_bins = theta_bins.to(device)
                 
                 coord_chunks = chunk_batch(theta_bins, SEQ_LEN + K)
@@ -180,8 +179,7 @@ def main():
                     batch = next(data_iter)
                     
                     theta = batch["theta"]
-                    theta_deg = theta * (180.0 / np.pi)
-                    theta_bins = torch.clamp(torch.round(theta_deg), -90, 90).long() + 90
+                    theta_bins = params.discretize_theta(theta)
                     theta_bins = theta_bins.to(device)
                     
                     coord_chunks = chunk_batch(theta_bins, SEQ_LEN + K)
@@ -258,16 +256,16 @@ def main():
         for _ in range(15): # Collect 5 large batches for the probe dataset
             batch = next(data_iter)
             
+            # Discretize theta to bins
             theta = batch["theta"]
-            theta_deg = theta * (180.0 / np.pi)
-            theta_bins = torch.clamp(torch.round(theta_deg), -90, 90).long() + 90
+            theta_bins = params.discretize_theta(theta)
             theta_bins = theta_bins.to(device)
             
             velocities = batch["velocity"]
             beliefs = batch["belief_state"]
             hmm_states = batch["hmm_state"]
             
-            K_val = params.DEFAULT_N
+            K_val = K
             coord_chunks = chunk_batch(theta_bins, SEQ_LEN + K_val)
             vel_chunks = chunk_batch(velocities, SEQ_LEN + K_val)
             belief_chunks = chunk_batch(beliefs, SEQ_LEN + K_val)
@@ -280,6 +278,15 @@ def main():
                 state_targets = state_chunks[c_idx][:, :-K_val].numpy()
                 
                 probe_model(inputs)
+
+                act_list_layers = []
+                for i in range(NUM_LAYERS) :
+                    layer_act = activations[f'layer{i}'].cpu().numpy()
+                    # Normalize across the embedding/feature dimension
+                    layer_mean = layer_act.mean(axis=-1, keepdims=True)
+                    layer_std = layer_act.std(axis=-1, keepdims=True) + 1e-8
+                    layer_act_norm = (layer_act - layer_mean) / layer_std
+                    act_list_layers.append(layer_act_norm)
                 
                 # Concatenate activations from all layers
                 act_list_layers = [activations[f'layer{i}'].cpu().numpy() for i in range(NUM_LAYERS)]
@@ -293,15 +300,15 @@ def main():
                 vels_list.append(vel_targets.reshape(-1))
                 
                 # 2. Per-token feature extraction (for Belief State and Hidden State)
-                act_tokens = act.reshape(act.shape[0], SEQ_LEN // K, K, EFF_EMBED_DIM)
-                act_tokens_concat = act_tokens.reshape(act.shape[0], SEQ_LEN // K, K * EFF_EMBED_DIM)
+                act_tokens = act.reshape(act.shape[0], SEQ_LEN // params.DEFAULT_N, params.DEFAULT_N, EFF_EMBED_DIM)
+                act_tokens_concat = act_tokens.reshape(act.shape[0], SEQ_LEN // params.DEFAULT_N, params.DEFAULT_N * EFF_EMBED_DIM)
                 
                 # Subsample belief targets (first step of each 10-step token)
-                belief_tokens = belief_targets.reshape(belief_targets.shape[0], SEQ_LEN // K, K, 3)[:, :, 0, :]
+                belief_tokens = belief_targets.reshape(belief_targets.shape[0], SEQ_LEN // params.DEFAULT_N, params.DEFAULT_N, 3)[:, :, 0, :]
                 state_tokens = state_targets.reshape(state_targets.shape[0], SEQ_LEN // K, K)[:, :, 0]
                 
                 # Just extract, concat, and pass through
-                belief_acts_list.append(act_tokens_concat.reshape(-1, K * EFF_EMBED_DIM))
+                belief_acts_list.append(act_tokens_concat.reshape(-1, params.DEFAULT_N * EFF_EMBED_DIM))
                 belief_list.append(belief_tokens.reshape(-1, 3))
                 states_list.append(state_tokens.reshape(-1))
 
@@ -361,7 +368,7 @@ def main():
 
     # Plot Predicted points, colored dynamically by the TRUE belief state (Continuous RGB)
     plt.scatter(y_2d_pred[:, 0], y_2d_pred[:, 1], c=y_belief, alpha=0.4, s=2)
-
+    
     plt.title(f'Discrete Token Belief State Probing (R²: {score_belief:.3f})\\nColored by True Belief State')
     plt.axis('equal')
     plt.savefig(os.path.join(OUTPUT_DIR, 'discrete_probe_belief_state_geometry.png'), dpi=300)

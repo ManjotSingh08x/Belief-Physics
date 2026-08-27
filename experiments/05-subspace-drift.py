@@ -22,14 +22,13 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SEQ_LEN = 250
 BATCH_SIZE = 256
-VOCAB_SIZE = 1801
+VOCAB_SIZE = params.VOCAB_SIZE
 EMBED_DIM = 128
 NUM_LAYERS = 4
 NUM_HEADS = 1
 MAX_SEQ_LEN = 1024
 K = params.DEFAULT_N
-MAX_T = 20
-NUM_BLOCKS = (SEQ_LEN - MAX_T) // K + 1
+NUM_BLOCKS = (SEQ_LEN - N) // K + 1
 
 # theta encoding: Original training used 1-degree bins over [-90, 90]
 THETA_SCALE = 1.0
@@ -49,9 +48,7 @@ MODEL_PATH = "experiments/outputs-03/hmm_discrete_model.pt"
 
 
 def theta_to_bins(theta_rad):
-    theta_deg = theta_rad * (180.0 / np.pi)
-    bins = torch.round(theta_deg * THETA_SCALE) + THETA_OFFSET
-    return torch.clamp(bins, 0, VOCAB_SIZE - 1).long()
+    return params.discretize_theta(theta_rad)
 
 
 def to_barycentric(belief_3d):
@@ -238,8 +235,8 @@ class PipelineRunner:
                 self.model(bins[:, :-1])
             b_targets = to_barycentric(batch["belief_state"].to(DEVICE))
             acts = torch.cat([self.activations[f'layer{l}'] for l in range(NUM_LAYERS)], dim=2)
-            X_all.append(acts[:, :MAX_T, :].reshape(-1, acts.shape[2]).cpu())
-            Y_all.append(b_targets[:, :MAX_T, :].reshape(-1, 2).cpu())
+            X_all.append(acts[:, :N, :].reshape(-1, acts.shape[2]).cpu())
+            Y_all.append(b_targets[:, :N, :].reshape(-1, 2).cpu())
             self.activations.clear()
 
         X = torch.cat(X_all, dim=0).numpy()
@@ -258,8 +255,8 @@ class PipelineRunner:
     def run_training_sweeps(self):
         print("\n--- Training per-cell probes ---")
         self.train_accums = {
-            "b": [[StreamingRidge(EMBED_DIM, self.b_dim) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
-            "v": [[StreamingRidge(EMBED_DIM, self.v_dim) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
+            "b": [[StreamingRidge(EMBED_DIM, self.b_dim) for _ in range(N)] for _ in range(NUM_LAYERS)],
+            "v": [[StreamingRidge(EMBED_DIM, self.v_dim) for _ in range(N)] for _ in range(NUM_LAYERS)],
         }
         b_indices = [b * K for b in range(NUM_BLOCKS)]
 
@@ -277,7 +274,7 @@ class PipelineRunner:
                 with torch.no_grad():
                     self.model(inputs)
                 acts = [normalize_activations(self.activations[f'layer{l}']) for l in range(NUM_LAYERS)]
-                for t in range(MAX_T):
+                for t in range(N):
                     idx = [b * K + t for b in range(NUM_BLOCKS)]
                     for l in range(NUM_LAYERS):
                         act_lt = acts[l][:, idx, :].reshape(-1, EMBED_DIM)
@@ -287,21 +284,21 @@ class PipelineRunner:
             torch.cuda.empty_cache()
 
         self.solved_regular = {
-            "b": [[self.train_accums["b"][l][t].solve(ALPHA_REGULAR) for t in range(MAX_T)] for l in range(NUM_LAYERS)],
-            "v": [[self.train_accums["v"][l][t].solve(ALPHA_REGULAR) for t in range(MAX_T)] for l in range(NUM_LAYERS)],
+            "b": [[self.train_accums["b"][l][t].solve(ALPHA_REGULAR) for t in range(N)] for l in range(NUM_LAYERS)],
+            "v": [[self.train_accums["v"][l][t].solve(ALPHA_REGULAR) for t in range(N)] for l in range(NUM_LAYERS)],
         }
         self.solved_zero = {
-            "b": [[self.train_accums["b"][l][t].solve(ALPHA_ZERO) for t in range(MAX_T)] for l in range(NUM_LAYERS)],
+            "b": [[self.train_accums["b"][l][t].solve(ALPHA_ZERO) for t in range(N)] for l in range(NUM_LAYERS)],
         }
 
     def run_testing_sweeps(self):
         print("\n--- Testing per-cell probes ---")
         self.evals_regular = {
-            "b": [[StreamingEvaluator(self.b_dim) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
-            "v": [[StreamingEvaluator(self.v_dim) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
+            "b": [[StreamingEvaluator(self.b_dim) for _ in range(N)] for _ in range(NUM_LAYERS)],
+            "v": [[StreamingEvaluator(self.v_dim) for _ in range(N)] for _ in range(NUM_LAYERS)],
         }
         self.evals_zero = {
-            "b": [[StreamingEvaluator(self.b_dim) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
+            "b": [[StreamingEvaluator(self.b_dim) for _ in range(N)] for _ in range(NUM_LAYERS)],
         }
         b_indices = [b * K for b in range(NUM_BLOCKS)]
 
@@ -319,7 +316,7 @@ class PipelineRunner:
                 with torch.no_grad():
                     self.model(inputs)
                 acts = [normalize_activations(self.activations[f'layer{l}']) for l in range(NUM_LAYERS)]
-                for t in range(MAX_T):
+                for t in range(N):
                     idx = [b * K + t for b in range(NUM_BLOCKS)]
                     for l in range(NUM_LAYERS):
                         act_lt = acts[l][:, idx, :].reshape(-1, EMBED_DIM)
@@ -334,17 +331,17 @@ class PipelineRunner:
 
     def analyze_drift(self):
         print("\n--- Drift analysis ---")
-        self.belief_r2 = np.zeros((NUM_LAYERS, MAX_T))
+        self.belief_r2 = np.zeros((NUM_LAYERS, N))
         for l in range(NUM_LAYERS):
-            for t in range(MAX_T):
+            for t in range(N):
                 self.belief_r2[l, t] = self.evals_regular["b"][l][t].get_r2()
 
         # constrained reference: must allow causal propagation to PEAK_T via later layers
         mask = np.full_like(self.belief_r2, -np.inf)
         mask[:NUM_LAYERS - 1, :PEAK_T + 1] = self.belief_r2[:NUM_LAYERS - 1, :PEAK_T + 1]
         flat_idx = np.argmax(mask)
-        self.ref_l = flat_idx // MAX_T
-        self.ref_t = flat_idx % MAX_T
+        self.ref_l = flat_idx // N
+        self.ref_t = flat_idx % N
         assert self.ref_l < NUM_LAYERS - 1, "reference layer must allow forward propagation"
         assert self.ref_t <= PEAK_T, "reference timestep must be at or before eval timestep"
         print(f"Reference cell: layer {self.ref_l}, t={self.ref_t} (R2={self.belief_r2[self.ref_l, self.ref_t]:.4f})")
@@ -352,16 +349,16 @@ class PipelineRunner:
         self.ref_beta_b = self.solved_regular["b"][self.ref_l][self.ref_t][0]
 
         self.angle_vs_l = [subspace_angle(self.ref_beta_b, self.solved_regular["b"][l][self.ref_t][0]) for l in range(NUM_LAYERS)]
-        self.angle_vs_t = [subspace_angle(self.ref_beta_b, self.solved_regular["b"][self.ref_l][t][0]) for t in range(MAX_T)]
+        self.angle_vs_t = [subspace_angle(self.ref_beta_b, self.solved_regular["b"][self.ref_l][t][0]) for t in range(N)]
 
         self.drift_label_l = windowed_drift_test(self.angle_vs_l, self.null_bb_threshold)
         self.drift_label_t = windowed_drift_test(self.angle_vs_t, self.null_bb_threshold)
         print(f"Drift vs layer: {self.drift_label_l}")
         print(f"Drift vs timestep: {self.drift_label_t}")
 
-        self.bv_angle_grid = np.zeros((NUM_LAYERS, MAX_T))
+        self.bv_angle_grid = np.zeros((NUM_LAYERS, N))
         for l in range(NUM_LAYERS):
-            for t in range(MAX_T):
+            for t in range(N):
                 beta_b = self.solved_regular["b"][l][t][0]
                 beta_v = self.solved_regular["v"][l][t][0]
                 self.bv_angle_grid[l, t] = subspace_angle(beta_b, beta_v)
@@ -459,7 +456,7 @@ class PipelineRunner:
         axes[0, 1].set_title(f"Belief-vs-Velocity Angle (null 5th pct={self.null_bv_threshold:.1f})")
         axes[0, 1].set_xlabel("Timestep")
 
-        r2_zero = np.array([[self.evals_zero["b"][l][t].get_r2() for t in range(MAX_T)] for l in range(NUM_LAYERS)])
+        r2_zero = np.array([[self.evals_zero["b"][l][t].get_r2() for t in range(N)] for l in range(NUM_LAYERS)])
         sns.heatmap(r2_zero, ax=axes[0, 2], annot=True, fmt=".2f", cmap="viridis", vmin=0, vmax=1)
         axes[0, 2].set_title("Belief Test R2 (alpha=1e-6 control)")
 
@@ -469,7 +466,7 @@ class PipelineRunner:
         axes[1, 0].set_ylim(0, 90)
         axes[1, 0].legend()
 
-        axes[1, 1].plot(range(MAX_T), self.angle_vs_t, marker='o')
+        axes[1, 1].plot(range(N), self.angle_vs_t, marker='o')
         axes[1, 1].axhline(self.null_bb_threshold, color='r', linestyle='--', label="null 5th pct")
         axes[1, 1].set_title(f"Drift vs Timestep: {self.drift_label_t}")
         axes[1, 1].set_ylim(0, 90)

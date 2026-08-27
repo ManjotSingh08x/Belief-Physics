@@ -31,10 +31,9 @@ MAX_SEQ_LEN = 1024
 OUTPUT_DIR = "experiments/outputs-04"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-N = parans,DEFAULT_N
+N = parans.DEFAULT_N
 K = N  # K=10c
-MAX_T = 20
-NUM_BLOCKS = (SEQ_LEN - MAX_T) // N + 1
+NUM_BLOCKS = (SEQ_LEN - N) // N + 1
 
 TRAIN_BATCHES = 200
 TEST_BATCHES = 30
@@ -162,7 +161,7 @@ def process_batches(model, data_iter, num_batches, mode="Train", accumulators=No
             # Cache activations to avoid repetitive dict lookups
             acts = [model.activations[f'layer{l}'] for l in range(NUM_LAYERS)]
             
-            for t in range(MAX_T):
+            for t in range(N):
                 indices = [b * N + t for b in range(NUM_BLOCKS)]
                 
                 # Extract the correct velocity target for this exact timestep
@@ -196,8 +195,8 @@ def process_batches(model, data_iter, num_batches, mode="Train", accumulators=No
             
             # 3. Update L Sweep grid (timesteps concatenated)
             for l in range(NUM_LAYERS):
-                act_l_concat = torch.cat([acts[l][:, [b * N + t for b in range(NUM_BLOCKS)], :].reshape(-1, EMBED_DIM) for t in range(MAX_T)], dim=1)
-                if mode == "Train":
+                act_l_concat = torch.cat([acts[l][:, [b * N + t for b in range(NUM_BLOCKS)], :].reshape(-1, EMBED_DIM) for t in range(N)], dim=1)
+                if mode == "T            rain":
                     accumulators["l_b"][l].update(act_l_concat, b_targets)
                     accumulators["l_v"][l].update(act_l_concat, v_targets_start)
                 else:
@@ -245,33 +244,33 @@ def main():
 
     print(f"\n--- PHASE 1: Training Stream ({TRAIN_BATCHES} Batches) ---")
     train_accums = {
-        "lxt_b": [[StreamingRidge(EMBED_DIM, 3) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
-        "lxt_v": [[StreamingRidge(EMBED_DIM, 1) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
-        "t_b": [StreamingRidge(EMBED_DIM * NUM_LAYERS, 3) for _ in range(MAX_T)],
-        "t_v": [StreamingRidge(EMBED_DIM * NUM_LAYERS, 1) for _ in range(MAX_T)],
-        "l_b": [StreamingRidge(EMBED_DIM * MAX_T, 3) for _ in range(NUM_LAYERS)],
-        "l_v": [StreamingRidge(EMBED_DIM * MAX_T, 1) for _ in range(NUM_LAYERS)],
+        "lxt_b": [[StreamingRidge(EMBED_DIM, 3) for _ in range(N)] for _ in range(NUM_LAYERS)],
+        "lxt_v": [[StreamingRidge(EMBED_DIM, 1) for _ in range(N)] for _ in range(NUM_LAYERS)],
+        "t_b": [StreamingRidge(EMBED_DIM * NUM_LAYERS, 3) for _ in range(N)],
+        "t_v": [StreamingRidge(EMBED_DIM * NUM_LAYERS, 1) for _ in range(N)],
+        "l_b": [StreamingRidge(EMBED_DIM * N, 3) for _ in range(NUM_LAYERS)],
+        "l_v": [StreamingRidge(EMBED_DIM * N, 1) for _ in range(NUM_LAYERS)],
     }
     
     process_batches(probe_model, data_iter, TRAIN_BATCHES, mode="Train", accumulators=train_accums)
     
     print("\n--- PHASE 2: Solving Regressions ---")
     solved_weights = {
-        "lxt_b_weights": [[train_accums["lxt_b"][l][t].solve(ALPHA) for t in range(MAX_T)] for l in range(NUM_LAYERS)],
-        "lxt_v_weights": [[train_accums["lxt_v"][l][t].solve(ALPHA) for t in range(MAX_T)] for l in range(NUM_LAYERS)],
-        "t_b_weights": [train_accums["t_b"][t].solve(ALPHA) for t in range(MAX_T)],
-        "t_v_weights": [train_accums["t_v"][t].solve(ALPHA) for t in range(MAX_T)],
+        "lxt_b_weights": [[train_accums["lxt_b"][l][t].solve(ALPHA) for t in range(N)] for l in range(NUM_LAYERS)],
+        "lxt_v_weights": [[train_accums["lxt_v"][l][t].solve(ALPHA) for t in range(N)] for l in range(NUM_LAYERS)],
+        "t_b_weights": [train_accums["t_b"][t].solve(ALPHA) for t in range(N)],
+        "t_v_weights": [train_accums["t_v"][t].solve(ALPHA) for t in range(N)],
         "l_b_weights": [train_accums["l_b"][l].solve(ALPHA) for l in range(NUM_LAYERS)],
         "l_v_weights": [train_accums["l_v"][l].solve(ALPHA) for l in range(NUM_LAYERS)],
     }
     
     # Compute angles instantly from solved betas
-    angle_matrix = np.zeros((NUM_LAYERS, MAX_T))
-    t_angle = np.zeros(MAX_T)
+    angle_matrix = np.zeros((NUM_LAYERS, N))
+    t_angle = np.zeros(N)
     l_angle = np.zeros(NUM_LAYERS)
     
     for l in range(NUM_LAYERS):
-        for t in range(MAX_T):
+        for t in range(N):
             beta_b = solved_weights["lxt_b_weights"][l][t][0]
             beta_v = solved_weights["lxt_v_weights"][l][t][0]
             angle_matrix[l, t] = subspace_angle(beta_b, beta_v)
@@ -280,7 +279,7 @@ def main():
         beta_v_l = solved_weights["l_v_weights"][l][0]
         l_angle[l] = subspace_angle(beta_b_l, beta_v_l)
             
-    for t in range(MAX_T):
+    for t in range(N):
         beta_b = solved_weights["t_b_weights"][t][0]
         beta_v = solved_weights["t_v_weights"][t][0]
         t_angle[t] = subspace_angle(beta_b, beta_v)
@@ -293,10 +292,10 @@ def main():
     print(f"\n--- PHASE 3: Testing Stream ({TEST_BATCHES} Batches) ---")
     test_accums = {
         **solved_weights,
-        "lxt_b_eval": [[StreamingEvaluator(3) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
-        "lxt_v_eval": [[StreamingEvaluator(1) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
-        "t_b_eval": [StreamingEvaluator(3) for _ in range(MAX_T)],
-        "t_v_eval": [StreamingEvaluator(1) for _ in range(MAX_T)],
+        "lxt_b_eval": [[StreamingEvaluator(3) for _ in range(N)] for _ in range(NUM_LAYERS)],
+        "lxt_v_eval": [[StreamingEvaluator(1) for _ in range(N)] for _ in range(NUM_LAYERS)],
+        "t_b_eval": [StreamingEvaluator(3) for _ in range(N)],
+        "t_v_eval": [StreamingEvaluator(1) for _ in range(N)],
         "l_b_eval": [StreamingEvaluator(3) for _ in range(NUM_LAYERS)],
         "l_v_eval": [StreamingEvaluator(1) for _ in range(NUM_LAYERS)],
     }
@@ -304,16 +303,16 @@ def main():
     process_batches(probe_model, data_iter, TEST_BATCHES, mode="Test", accumulators=test_accums)
     
     print("\n--- PHASE 4: Extracting Results ---")
-    belief_r2_matrix = np.zeros((NUM_LAYERS, MAX_T))
-    vel_r2_matrix = np.zeros((NUM_LAYERS, MAX_T))
+    belief_r2_matrix = np.zeros((NUM_LAYERS, N))
+    vel_r2_matrix = np.zeros((NUM_LAYERS, N))
     for l in range(NUM_LAYERS):
-        for t in range(MAX_T):
+        for t in range(N):
             belief_r2_matrix[l, t] = test_accums["lxt_b_eval"][l][t].get_r2()
             vel_r2_matrix[l, t] = test_accums["lxt_v_eval"][l][t].get_r2()
             
-    t_belief_r2 = np.zeros(MAX_T)
-    t_vel_r2 = np.zeros(MAX_T)
-    for t in range(MAX_T):
+    t_belief_r2 = np.zeros(N)
+    t_vel_r2 = np.zeros(N)
+    for t in range(N):
         t_belief_r2[t] = test_accums["t_b_eval"][t].get_r2()
         t_vel_r2[t] = test_accums["t_v_eval"][t].get_r2()
         
@@ -327,7 +326,7 @@ def main():
     fig, axes = plt.subplots(3, 3, figsize=(18, 15))
     
     layer_labels = [f"Layer {i}" for i in range(NUM_LAYERS)]
-    timestep_labels = [f"t={t}" for t in range(MAX_T)]
+    timestep_labels = [f"t={t}" for t in range(N)]
     
     # ROW 0: L x T Heatmaps
     sns.heatmap(belief_r2_matrix, ax=axes[0, 0], annot=True, fmt=".2f", cmap="viridis", vmin=0, vmax=1,
@@ -347,36 +346,36 @@ def main():
     axes[0, 2].set_xlabel("Relative Timestep")
 
     # ROW 1: T Sweep (Layers Concatenated)
-    axes[1, 0].plot(range(MAX_T), t_belief_r2, marker='o', color='green')
+    axes[1, 0].plot(range(N), t_belief_r2, marker='o', color='green')
     axes[1, 0].set_title("Belief Test $R^2$ (T-Sweep, 512D)")
     axes[1, 0].set_xlabel("Relative Timestep")
     axes[1, 0].set_ylim(0, 1)
     
-    axes[1, 1].plot(range(MAX_T), t_vel_r2, marker='o', color='purple')
+    axes[1, 1].plot(range(N), t_vel_r2, marker='o', color='purple')
     axes[1, 1].set_title("Velocity Test $R^2$ (T-Sweep, 512D)")
     axes[1, 1].set_xlabel("Relative Timestep")
     axes[1, 1].set_ylim(0, 1)
 
-    axes[1, 2].plot(range(MAX_T), t_angle, marker='o', color='red')
+    axes[1, 2].plot(range(N), t_angle, marker='o', color='red')
     axes[1, 2].set_title("Subspace Angle (T-Sweep)")
     axes[1, 2].set_xlabel("Relative Timestep")
     axes[1, 2].set_ylim(0, 90)
 
     # ROW 2: L Sweep (Timesteps Concatenated)
     axes[2, 0].plot(range(NUM_LAYERS), l_belief_r2, marker='o', color='blue')
-    axes[2, 0].set_title(f"Belief Test $R^2$ (L-Sweep, {EMBED_DIM * MAX_T}D)")
+    axes[2, 0].set_title(f"Belief Test $R^2$ (L-Sweep, {EMBED_DIM * N}D)")
     axes[2, 0].set_xlabel("Layer")
     axes[2, 0].set_xticks(range(NUM_LAYERS))
     axes[2, 0].set_ylim(0, 1)
 
     axes[2, 1].plot(range(NUM_LAYERS), l_vel_r2, marker='o', color='orange')
-    axes[2, 1].set_title(f"Velocity Test $R^2$ (L-Sweep, {EMBED_DIM * MAX_T}D)")
+    axes[2, 1].set_title(f"Velocity Test $R^2$ (L-Sweep, {EMBED_DIM * N}D)")
     axes[2, 1].set_xlabel("Layer")
     axes[2, 1].set_xticks(range(NUM_LAYERS))
     axes[2, 1].set_ylim(0, 1)
 
     axes[2, 2].plot(range(NUM_LAYERS), l_angle, marker='o', color='brown')
-    axes[2, 2].set_title(f"Subspace Angle (L-Sweep, {EMBED_DIM * MAX_T}D)")
+    axes[2, 2].set_title(f"Subspace Angle (L-Sweep, {EMBED_DIM * N}D)")
     axes[2, 2].set_xlabel("Layer")
     axes[2, 2].set_xticks(range(NUM_LAYERS))
     axes[2, 2].set_ylim(0, 90)
