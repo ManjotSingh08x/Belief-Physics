@@ -1,3 +1,6 @@
+import torch
+import numpy as np
+
 # Default Pendulum Physics Parameters
 
 # mu: Coefficient for linear viscous damping (-mu * v). Controls how fast the pendulum loses energy.
@@ -9,7 +12,7 @@ DEFAULT_G = 9.8
 # l: Length of the pendulum (affects the period of oscillation).
 DEFAULT_L = 1
 
-DEFAULT_INITIAL_V = 1
+DEFAULT_INITIAL_V = 1 
 
 # delta_v: The base magnitude of the velocity impulse applied by the HMM. 
 # An HMM token of '0' applies -delta_v, '2' applies +delta_v, and '1' applies 0.
@@ -71,3 +74,14 @@ DEFAULT_RRXOR_ALPHA = 0.7
 
 # Dataset Generation Parameters
 DATASET_BATCH_SIZE = 4096
+# --- Discretization ---
+
+VOCAB_SIZE = 181 # Bins from -90.0 to +90.0 degrees with 0.1 degree resolution
+
+def discretize_theta(theta):
+    """
+    Discretizes continuous theta (in radians) into VOCAB_SIZE integer bins.
+    Assumes theta is a torch Tensor.
+    """
+    theta_deg = theta * (180.0 / np.pi)
+    return torch.clamp(torch.round(theta_deg), -90, 90).long() + 90

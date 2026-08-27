@@ -23,7 +23,7 @@ print(f"Using device: {device}")
 # --- Hyperparameters ---
 SEQ_LEN = 250
 BATCH_SIZE = 256
-VOCAB_SIZE = 1801
+VOCAB_SIZE = params.VOCAB_SIZE
 EMBED_DIM = 128
 NUM_LAYERS = 4
 NUM_HEADS = 1
@@ -141,7 +141,7 @@ def process_batches(model, data_iter, num_batches, mode="Train", accumulators=No
     
     for _ in tqdm(range(num_batches), desc=desc):
         batch = next(data_iter)
-        theta_bins = torch.clamp(torch.round(batch["theta"] * (180.0 / np.pi)), -90, 90).long() + 90
+        theta_bins = params.discretize_theta(batch["theta"])
         theta_bins = theta_bins.to(device)
         
         coord_chunks = chunk_batch(theta_bins, SEQ_LEN + K)
@@ -153,7 +153,7 @@ def process_batches(model, data_iter, num_batches, mode="Train", accumulators=No
             
             # Extract targets
             b_targets = belief_chunks[c_idx][:, b_indices, :].reshape(-1, 3)
-            v_targets = vel_chunks[c_idx][:, b_indices].reshape(-1, 1)
+            v_targets_start = vel_chunks[c_idx][:, b_indices].reshape(-1, 1)
             
             with torch.no_grad():
                 model(inputs)
@@ -164,47 +164,50 @@ def process_batches(model, data_iter, num_batches, mode="Train", accumulators=No
             for t in range(MAX_T):
                 indices = [b * N + t for b in range(NUM_BLOCKS)]
                 
+                # Extract the correct velocity target for this exact timestep
+                v_targets_t = vel_chunks[c_idx][:, indices].reshape(-1, 1)
+                
                 # 1. Update L x T grids
                 for l in range(NUM_LAYERS):
                     act_lt = acts[l][:, indices, :].reshape(-1, EMBED_DIM)
                     
                     if mode == "Train":
                         accumulators["lxt_b"][l][t].update(act_lt, b_targets)
-                        accumulators["lxt_v"][l][t].update(act_lt, v_targets)
+                        accumulators["lxt_v"][l][t].update(act_lt, v_targets_t)
                     else:
                         beta_b, mux_b, muy_b = accumulators["lxt_b_weights"][l][t]
                         accumulators["lxt_b_eval"][l][t].update(act_lt, b_targets, beta_b, mux_b, muy_b)
                         
                         beta_v, mux_v, muy_v = accumulators["lxt_v_weights"][l][t]
-                        accumulators["lxt_v_eval"][l][t].update(act_lt, v_targets, beta_v, mux_v, muy_v)
+                        accumulators["lxt_v_eval"][l][t].update(act_lt, v_targets_t, beta_v, mux_v, muy_v)
                 
                 # 2. Update T Sweep grid (layers concatenated)
                 act_t_concat = torch.cat([acts[l][:, indices, :].reshape(-1, EMBED_DIM) for l in range(NUM_LAYERS)], dim=1)
                 if mode == "Train":
                     accumulators["t_b"][t].update(act_t_concat, b_targets)
-                    accumulators["t_v"][t].update(act_t_concat, v_targets)
+                    accumulators["t_v"][t].update(act_t_concat, v_targets_t)
                 else:
                     beta_b, mux_b, muy_b = accumulators["t_b_weights"][t]
                     accumulators["t_b_eval"][t].update(act_t_concat, b_targets, beta_b, mux_b, muy_b)
                     
                     beta_v, mux_v, muy_v = accumulators["t_v_weights"][t]
-                    accumulators["t_v_eval"][t].update(act_t_concat, v_targets, beta_v, mux_v, muy_v)
+                    accumulators["t_v_eval"][t].update(act_t_concat, v_targets_t, beta_v, mux_v, muy_v)
             
             # 3. Update L Sweep grid (timesteps concatenated)
             for l in range(NUM_LAYERS):
-                act_l_concat = torch.cat([acts[l][:, [b * K + t for b in range(NUM_BLOCKS)], :].reshape(-1, EMBED_DIM) for t in range(MAX_T)], dim=1)
+                act_l_concat = torch.cat([acts[l][:, [b * N + t for b in range(NUM_BLOCKS)], :].reshape(-1, EMBED_DIM) for t in range(MAX_T)], dim=1)
                 if mode == "Train":
                     accumulators["l_b"][l].update(act_l_concat, b_targets)
-                    accumulators["l_v"][l].update(act_l_concat, v_targets)
+                    accumulators["l_v"][l].update(act_l_concat, v_targets_start)
                 else:
                     beta_b, mux_b, muy_b = accumulators["l_b_weights"][l]
                     accumulators["l_b_eval"][l].update(act_l_concat, b_targets, beta_b, mux_b, muy_b)
                     
                     beta_v, mux_v, muy_v = accumulators["l_v_weights"][l]
-                    accumulators["l_v_eval"][l].update(act_l_concat, v_targets, beta_v, mux_v, muy_v)
+                    accumulators["l_v_eval"][l].update(act_l_concat, v_targets_start, beta_v, mux_v, muy_v)
         
         # Aggressive memory cleanup per batch
-        del inputs, b_targets, v_targets, coord_chunks, vel_chunks, belief_chunks, theta_bins, batch, acts
+        del inputs, b_targets, v_targets_start, coord_chunks, vel_chunks, belief_chunks, theta_bins, batch, acts
         model.activations.clear()
         gc.collect()
         torch.cuda.empty_cache()
