@@ -28,8 +28,9 @@ NUM_LAYERS = 4
 NUM_HEADS = 1
 MAX_SEQ_LEN = 1024
 K = params.DEFAULT_N
+N = params.DEFAULT_N
 MAX_T = 20
-NUM_BLOCKS = (SEQ_LEN - MAX_T) // K + 1
+NUM_BLOCKS = (SEQ_LEN - MAX_T) // N + 1
 
 # theta encoding: Original training used 1-degree bins over [-90, 90]
 THETA_SCALE = 1.0
@@ -261,7 +262,7 @@ class PipelineRunner:
             "b": [[StreamingRidge(EMBED_DIM, self.b_dim) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
             "v": [[StreamingRidge(EMBED_DIM, self.v_dim) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
         }
-        b_indices = [b * K for b in range(NUM_BLOCKS)]
+        b_indices = [b * N for b in range(NUM_BLOCKS)]
 
         for _ in tqdm(range(TRAIN_BATCHES), desc="train"):
             batch = next(self.data_iter)
@@ -278,7 +279,7 @@ class PipelineRunner:
                     self.model(inputs)
                 acts = [normalize_activations(self.activations[f'layer{l}']) for l in range(NUM_LAYERS)]
                 for t in range(MAX_T):
-                    idx = [b * K + t for b in range(NUM_BLOCKS)]
+                    idx = [b * N + t for b in range(NUM_BLOCKS)]
                     for l in range(NUM_LAYERS):
                         act_lt = acts[l][:, idx, :].reshape(-1, EMBED_DIM)
                         self.train_accums["b"][l][t].update(act_lt, b_targets)
@@ -303,7 +304,7 @@ class PipelineRunner:
         self.evals_zero = {
             "b": [[StreamingEvaluator(self.b_dim) for _ in range(MAX_T)] for _ in range(NUM_LAYERS)],
         }
-        b_indices = [b * K for b in range(NUM_BLOCKS)]
+        b_indices = [b * N for b in range(NUM_BLOCKS)]
 
         for _ in tqdm(range(TEST_BATCHES), desc="test"):
             batch = next(self.data_iter)
@@ -320,7 +321,7 @@ class PipelineRunner:
                     self.model(inputs)
                 acts = [normalize_activations(self.activations[f'layer{l}']) for l in range(NUM_LAYERS)]
                 for t in range(MAX_T):
-                    idx = [b * K + t for b in range(NUM_BLOCKS)]
+                    idx = [b * N + t for b in range(NUM_BLOCKS)]
                     for l in range(NUM_LAYERS):
                         act_lt = acts[l][:, idx, :].reshape(-1, EMBED_DIM)
                         beta_b, mux_b, muy_b = self.solved_regular["b"][l][t]
@@ -398,7 +399,7 @@ class PipelineRunner:
             bins = theta_to_bins(batch["theta"])
             inputs = bins.to(DEVICE)[:, :-1]
             targets = bins.to(DEVICE)[:, 1:]
-            eval_indices = [b * K + PEAK_T for b in range(NUM_BLOCKS) if b * K + PEAK_T < targets.size(1)]
+            eval_indices = [b * N + PEAK_T for b in range(NUM_BLOCKS) if b * N + PEAK_T < targets.size(1)]
 
             with torch.no_grad():
                 out = self.model(inputs)
@@ -434,7 +435,7 @@ class PipelineRunner:
             with torch.no_grad():
                 out = self.model(inputs)
                 donor_targets = targets[shuffle_idx]
-                eval_indices = [b * K + PEAK_T for b in range(NUM_BLOCKS) if b * K + PEAK_T < targets.size(1)]
+                eval_indices = [b * N + PEAK_T for b in range(NUM_BLOCKS) if b * N + PEAK_T < targets.size(1)]
                 patching_losses.append(criterion(out[:, eval_indices, :].transpose(1, 2), donor_targets[:, eval_indices]).item())
             h.remove()
             self.activations.clear()

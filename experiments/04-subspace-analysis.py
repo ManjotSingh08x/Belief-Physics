@@ -32,11 +32,11 @@ OUTPUT_DIR = "experiments/outputs-04"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 K = params.DEFAULT_N  # K=10
+N = params.DEFAULT_N
 MAX_T = 20
-NUM_BLOCKS = (SEQ_LEN - MAX_T) // K + 1
-
-TRAIN_BATCHES = 200
-TEST_BATCHES = 30
+NUM_BLOCKS = (SEQ_LEN - MAX_T) // N + 1
+TRAIN_BATCHES = 50
+TEST_BATCHES = 10
 ALPHA = 1.0
 PEAK_T = 9
 
@@ -137,7 +137,7 @@ def process_batches(model, data_iter, num_batches, mode="Train", accumulators=No
     desc = f"{mode} Stream"
     
     # Pre-allocate indices
-    b_indices = [b * K for b in range(NUM_BLOCKS)]
+    b_indices = [b * N for b in range(NUM_BLOCKS)]
     
     for _ in tqdm(range(num_batches), desc=desc):
         batch = next(data_iter)
@@ -162,7 +162,7 @@ def process_batches(model, data_iter, num_batches, mode="Train", accumulators=No
             acts = [model.activations[f'layer{l}'] for l in range(NUM_LAYERS)]
             
             for t in range(MAX_T):
-                indices = [b * K + t for b in range(NUM_BLOCKS)]
+                indices = [b * N + t for b in range(NUM_BLOCKS)]
                 
                 # 1. Update L x T grids
                 for l in range(NUM_LAYERS):

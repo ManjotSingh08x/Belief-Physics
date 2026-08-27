@@ -58,6 +58,7 @@ MAX_SEQ_LEN = 1024
 OUTPUT_DIR = "experiments/outputs-03"
 
 K = params.DEFAULT_N
+N = params.DEFAULT_N 
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -267,7 +268,7 @@ def main():
             beliefs = batch["belief_state"]
             hmm_states = batch["hmm_state"]
             
-            K_val = params.DEFAULT_N
+            K_val = K
             coord_chunks = chunk_batch(theta_bins, SEQ_LEN + K_val)
             vel_chunks = chunk_batch(velocities, SEQ_LEN + K_val)
             belief_chunks = chunk_batch(beliefs, SEQ_LEN + K_val)
@@ -283,7 +284,7 @@ def main():
                 
                 # Concatenate activations from all layers
                 act_list_layers = [activations[f'layer{i}'].cpu().numpy() for i in range(NUM_LAYERS)]
-                act = np.concatenate(act_list_layers, axis=-1)
+                act = np.concatenate(act_list_layers, axis=-1) # act is concatenated
                 
                 EFF_EMBED_DIM = NUM_LAYERS * EMBED_DIM
                 
@@ -293,15 +294,21 @@ def main():
                 vels_list.append(vel_targets.reshape(-1))
                 
                 # 2. Per-token feature extraction (for Belief State and Hidden State)
-                act_tokens = act.reshape(act.shape[0], SEQ_LEN // K, K, EFF_EMBED_DIM)
-                act_tokens_concat = act_tokens.reshape(act.shape[0], SEQ_LEN // K, K * EFF_EMBED_DIM)
+                seq_len_N = (SEQ_LEN // N) * N
                 
-                # Subsample belief targets (first step of each 10-step token)
-                belief_tokens = belief_targets.reshape(belief_targets.shape[0], SEQ_LEN // K, K, 3)[:, :, 0, :]
-                state_tokens = state_targets.reshape(state_targets.shape[0], SEQ_LEN // K, K)[:, :, 0]
+                act_N = act[:, :seq_len_N, :]
+                act_tokens = act_N.reshape(act.shape[0], SEQ_LEN // N, N, EFF_EMBED_DIM)
+                act_tokens_concat = act_tokens.reshape(act.shape[0], SEQ_LEN // N, N * EFF_EMBED_DIM)
+                
+                # Subsample belief targets (first step of each N-step token)
+                belief_targets_N = belief_targets[:, :seq_len_N, :]
+                belief_tokens = belief_targets_N.reshape(belief_targets.shape[0], SEQ_LEN // N, N, 3)[:, :, 0, :]
+                
+                state_targets_N = state_targets[:, :seq_len_N]
+                state_tokens = state_targets_N.reshape(state_targets.shape[0], SEQ_LEN // N, N)[:, :, 0]
                 
                 # Just extract, concat, and pass through
-                belief_acts_list.append(act_tokens_concat.reshape(-1, K * EFF_EMBED_DIM))
+                belief_acts_list.append(act_tokens_concat.reshape(-1, N * EFF_EMBED_DIM))
                 belief_list.append(belief_tokens.reshape(-1, 3))
                 states_list.append(state_tokens.reshape(-1))
 
